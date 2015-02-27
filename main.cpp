@@ -7,11 +7,25 @@
 #include <string>
 #include <cassert>
 
-template<class T>
-void LOG(T arg, std::string msg)
+#include <sstream>
+
+
+class Logger
 {
-    std::cout << "LOG: " << msg << " " << arg << " \n";
-}
+    protected:
+        std::ostringstream os;
+    public:
+        std::ostringstream& get()
+        {
+            return os;
+        }
+        ~Logger()
+        {
+            std::cout << os.str() << std::endl;
+        }
+
+};
+
 
 enum class Type
 {
@@ -23,12 +37,12 @@ struct Req
 
     Req(Type type, unsigned t)
     {
-        type_ = type;
-        time_ = t;
+        type = type;
+        time = t;
     }
 
-    unsigned time_;
-    Type type_;
+    unsigned time;
+    Type type;
 };
 
 
@@ -36,19 +50,19 @@ struct Req
 struct ReqFactory
 {
     ReqFactory(uint16_t maxrand)
-    : maxrand_(maxrand)    
+    : Maxrand(maxrand)    
     {
         srand(time(NULL));
     }
 
     std::shared_ptr<Req> GetNext(Type t)
     {
-        unsigned next = rand() % 100;
+        unsigned next = rand() % Maxrand;
         auto ptr = std::shared_ptr<Req>(new Req(t, next)); 
         return ptr;
     }
 protected:
-    uint16_t maxrand_;
+    uint16_t Maxrand;
 };
 
 
@@ -57,179 +71,189 @@ class Queue
 {
 public:
     Queue(unsigned max = 10)
-    : elems_(0),
-    max_(max)
+    : Elems(0),
+    Max(max)
     {
 
     }
 
     bool IsEmpty()
     {
-        return elems_ == 0;
+        return Elems == 0;
     }
 
     bool IsFull()
     {
-        return elems_ == max_;
+        return Elems == Max;
     }
 
     T Deq()
     {
-        if(elems_ < 0 || q_.size() == 0)
+        if(Elems < 0 || Q.size() == 0)
             throw nullptr;
-        auto ret = q_.front();
-        q_.pop();
+        auto ret = Q.front();
+        Q.pop();
+        Elems--;
         return ret;
     }
 
     void Enq(T val)
     {
-        if(elems_ >= max_)
+        if(Elems >= Max)
             return;
 
-        q_.push(val);
-        elems_++;
+        Q.push(val);
+        Elems++;
+    }
+    size_t Count()
+    {
+        return Elems;
     }
 
 private:
-    std::queue<T> q_;
-    size_t elems_;
-    size_t max_;
-
+    std::queue<T> Q;
+    size_t Elems;
+    size_t Max;
 };
 
 class Server
 {
 public:
-    Server()
-    : isBusy_(false),
-    randMax_(20),
-    timeToProcess_(0)
+    Server(unsigned randmax = 20)
+    : BusyStatus(false),
+    RandMax(randmax),
+    FinishingTime(0)
     {
         srand(time(NULL));
     }
 
     bool Serve(unsigned currTime)
     {
-        if(isBusy_)
+        if(BusyStatus)
             return false;
 
-        timeToProcess_ = currTime + ((rand() + 1) % randMax_);
-        isBusy_ = true;
+        FinishingTime = currTime + ((rand() + 1) % RandMax);
+        BusyStatus = true;
 
         return true;
     }
 
     unsigned GetTimeToProcess()
     {
-        return timeToProcess_;
+        return FinishingTime;
     }
     
     bool IsBusy(unsigned currTime)
     {
-       if(timeToProcess_ >= currTime)
+       if(FinishingTime <= currTime)
        {
-           isBusy_ = false;
-           timeToProcess_ = 0;
+           BusyStatus = false;
+           FinishingTime = 0;
        }
-       return isBusy_;
+       return BusyStatus;
     }
 
 protected:
-    bool isBusy_;
-    unsigned randMax_;
-    unsigned timeToProcess_;
+    bool BusyStatus;
+    unsigned RandMax;
+    unsigned FinishingTime;
 };
 
-
+class Timer
+{
+    public:
+        unsigned time;
+};
 
 int main(int argc, char **argv)
 {
-    uint32_t timeEnd_ = 500, t_ = 0, h_ = timeEnd_ + 1, e1_ = 0, e2_ = 0;
-    ReqFactory fac_(100);
-    Queue<Type> q_;
-    Server s_;
+    uint32_t ending_t = 500, current_t = 0, finishing_t = ending_t + 1, first_ev_t = 0, second_ev_t = 0;
+    ReqFactory factory(20);
+    Queue<Type> queue(100); //TODO: remove
+    Server server(10);
 
-    auto type_ = Type::TReq1;
+    auto type = Type::TReq1;
     
-    auto req = fac_.GetNext(type_);
-    e1_ = req->time_;
-    e2_ = fac_.GetNext(Type::TReq2)->time_;
+    first_ev_t = factory.GetNext(type)->time;
+    second_ev_t = factory.GetNext(Type::TReq2)->time;
 
-    while(t_ < timeEnd_)
+    while(current_t < ending_t)
     {
-        if(h_ < e1_ && h_ < e2_)
+        if(finishing_t < first_ev_t && finishing_t < second_ev_t)
         //next event is server finishing with current request 
         {
             //set timer to that time
-            t_ = h_;
-            LOG(t_, "Server is now free, new current time: ");
+            current_t = finishing_t;
+            Logger().get() << "Server is now free, new current time: " << current_t ;
 
-            //Server MUST be busy at this moment
-            assert(!s_.IsBusy(t_));
+            //Server MUST NOT be busy at this moment
+            assert(!server.IsBusy(current_t));
 
-            //deque last element in a queue
+            //try to deque last element in a queue
             //and tell server to process
-            if(!q_.IsEmpty())
+            if(!queue.IsEmpty())
             {
-                s_.Serve(t_);
-                h_ = s_.GetTimeToProcess();
+                queue.Deq();
+                Logger().get() << "Deq'ed (" << queue.Count() << ")";
+                server.Serve(current_t);
+                finishing_t = server.GetTimeToProcess();
             }
             else
             {
-                //otherwise, set h_ to unreachable time
-                h_ = timeEnd_ + 1;
+                //otherwise, set finishing_t to unreachable time
+                finishing_t = ending_t + 1;
             }
         }
         else
         {
             //next event is either of requests coming in
-            if(e1_ < e2_)
+            if(first_ev_t < second_ev_t)
             {
-                t_ = e1_;
-                LOG(t_, "e1 arrives @");
-                type_ = Type::TReq1;
+                current_t = first_ev_t;
+                type = Type::TReq1;
+                Logger().get() << "Next event is e1 @" << current_t ;
             }
             else
             {
-                t_ = e2_;
-                LOG(t_, "e2 arrives @");
-                type_ = Type::TReq2;
+                current_t = second_ev_t;
+                type = Type::TReq2;
+                Logger().get() << "Next event is e2 @" << current_t;
             }
-
-            if(s_.IsBusy(t_))
+            
+            if(server.IsBusy(current_t))
             {
                 //Server is busy
                 //try to enqueue
 
-                if(!q_.IsEmpty())
-                {
-                    if(q_.IsFull())
-                        throw nullptr;
-
-                    q_.Enq(req->type_);
-
-
-                }
+                if(queue.IsFull())
+                    throw nullptr;
+                Logger().get() << "Enqueued(" << queue.Count() << ")";
+                queue.Enq(type);
             }
             else
             {
                 //Server is not busy
                 // no queing
-                s_.Serve(t_);
-                h_ = s_.GetTimeToProcess();
+                server.Serve(current_t);
+                finishing_t = server.GetTimeToProcess();
 
-                LOG(h_, "Server is now busy, will finish serving @");
+                Logger().get() << "Server is now busy, will finish serving @" << finishing_t;
             }
             //get time for arrival of the request
             //of the consumed request type
-            req = fac_.GetNext(type_);
-            if(type_ == Type::TReq1)
-                e1_ = t_ + req->time_;
+            auto time = factory.GetNext(type)->time;
+            if(type == Type::TReq1)
+            {
+                first_ev_t = current_t + time;
+                Logger().get() << "Generated event 1: " << first_ev_t;
+            }
             else
-                e2_ = t_ + req->time_;
+            {
+                second_ev_t = current_t + time;
+                Logger().get() << "Generated event 2: " << second_ev_t;
+            }
         }
 
-        std::cout << "Iteration end. Current time: " << t_ << " e1: " << e1_ << " e2: " << e2_<< " will finish serving @ " << h_ << std::endl;
+        std::cout << "Iteration end. Current time: " << current_t << " e1: " << first_ev_t << " e2: " << second_ev_t<< " will finish serving @ " << finishing_t << std::endl;
     }
 }
