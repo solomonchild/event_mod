@@ -5,6 +5,13 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <cassert>
+
+template<class T>
+void LOG(T arg, std::string msg)
+{
+    std::cout << "LOG: " << msg << " " << arg << " \n";
+}
 
 enum class Type
 {
@@ -68,10 +75,11 @@ public:
 
     T Deq()
     {
-        if(elems_ < 0 || q_.size == 0)
+        if(elems_ < 0 || q_.size() == 0)
             throw nullptr;
-
-        return q_.pop();
+        auto ret = q_.front();
+        q_.pop();
+        return ret;
     }
 
     void Enq(T val)
@@ -106,7 +114,7 @@ public:
         if(isBusy_)
             return false;
 
-        timeToProcess_ = currTime + (rand() % randMax_);
+        timeToProcess_ = currTime + ((rand() + 1) % randMax_);
         isBusy_ = true;
 
         return true;
@@ -137,7 +145,7 @@ protected:
 
 int main(int argc, char **argv)
 {
-    uint32_t timeEnd_ = 500, t_ = 0, h_ = 0, e1_ = 0, e2_ = 0;
+    uint32_t timeEnd_ = 500, t_ = 0, h_ = timeEnd_ + 1, e1_ = 0, e2_ = 0;
     ReqFactory fac_(100);
     Queue<Type> q_;
     Server s_;
@@ -145,63 +153,83 @@ int main(int argc, char **argv)
     auto type_ = Type::TReq1;
     
     auto req = fac_.GetNext(type_);
+    e1_ = req->time_;
+    e2_ = fac_.GetNext(Type::TReq2)->time_;
 
     while(t_ < timeEnd_)
     {
-        if(h_ < e1_ && h_ < e2)
+        if(h_ < e1_ && h_ < e2_)
+        //next event is server finishing with current request 
         {
+            //set timer to that time
             t_ = h_;
-            if(!s_.IsBusy(t_))
-                throw nullptr;
+            LOG(t_, "Server finished, new current time: ");
 
+            //Server MUST be busy at this moment
+            assert(!s_.IsBusy(t_));
+
+            //deque last element in a queue
+            //and tell server to process
             if(!q_.IsEmpty())
             {
-                h_ = s_.Serve();
-                Type t = q_.Deq();
-                if(t == TReq1)
-                {
-                    
-                }
+                s_.Serve(t_);
+                h_ = s_.GetTimeToProcess();
+            }
+            else
+            {
+                //otherwise, set h_ to unreachable time
+                h_ = timeEnd_ + 1;
             }
         }
         else
         {
+            //next event is either of requests coming in
             if(e1_ < e2_)
             {
                 t_ = e1_;
+                LOG(t_, "e1 arrived @");
                 type_ = Type::TReq1;
             }
             else
             {
                 t_ = e2_;
+                LOG(t_, "e2 arrived @");
                 type_ = Type::TReq2;
             }
 
-            if(!q_.IsEmpty())
+            if(s_.IsBusy(t_))
             {
-                if(q_.IsFull())
-                    throw nullptr;
-                q_.Enq(req.type_);
+                //Server is busy
+                //try to enqueue
+
+                if(!q_.IsEmpty())
+                {
+                    if(q_.IsFull())
+                        throw nullptr;
+
+                    q_.Enq(req->type_);
+
+
+                }
             }
+            else
+            {
+                //Server is not busy
+                // no queing
+                s_.Serve(t_);
+                h_ = s_.GetTimeToProcess();
 
-
-        }
-
-        if(!s.IsBusy(t_))
-        {
+                LOG(h_, "Server is now busy, will finish serving @");
+            }
+            //get time for arrival of the request
+            //of the consumed request type
             req = fac_.GetNext(type_);
-            t_ = req->time_;
-            s_.Serve(t_);
-            h_ = s_.GetTimeToProcess();
-        }
-        else if(e1_ <= t_ || e2_ <= t_)
-        {
-            if(q_.IsFull())
-                throw nullptr; 
-
-            q_.Enq(req.type_);
+            if(type_ == Type::TReq1)
+                e1_ = t_ + req->time_;
+            else
+                e2_ = t_ + req->time_;
         }
 
-        std::cout << "Current time: " << t_ << " next 1st " << e1_ << " next 2nd " << e2_<< " next processed time " << h_ << std::endl;
+        std::cout << "Current time: " << t_ << " e1: " << e1_ << " e2: " << e2_<< " will process @: " << h_ << std::endl;
     }
 }
