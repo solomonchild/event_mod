@@ -163,7 +163,7 @@ int main(int argc, char **argv)
         {
             //set timer to that time
             t_ = h_;
-            LOG(t_, "Server finished, new current time: ");
+            LOG(t_, "Server is now free, new current time: ");
 
             //Server MUST be busy at this moment
             assert(!s_.IsBusy(t_));
@@ -187,13 +187,13 @@ int main(int argc, char **argv)
             if(e1_ < e2_)
             {
                 t_ = e1_;
-                LOG(t_, "e1 arrived @");
+                LOG(t_, "e1 arrives @");
                 type_ = Type::TReq1;
             }
             else
             {
                 t_ = e2_;
-                LOG(t_, "e2 arrived @");
+                LOG(t_, "e2 arrives @");
                 type_ = Type::TReq2;
             }
 
@@ -230,6 +230,6 @@ int main(int argc, char **argv)
                 e2_ = t_ + req->time_;
         }
 
-        std::cout << "Current time: " << t_ << " e1: " << e1_ << " e2: " << e2_<< " will process @: " << h_ << std::endl;
+        std::cout << "Iteration end. Current time: " << t_ << " e1: " << e1_ << " e2: " << e2_<< " will finish serving @ " << h_ << std::endl;
     }
 }
