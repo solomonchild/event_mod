@@ -3,13 +3,14 @@
 #include <ctime>
 #include <queue>
 #include <iostream>
+#include <iomanip>
 #include <memory>
 #include <string>
 #include <cassert>
 
 #include <sstream>
 
-#define LOG(x) Logger().get() << x 
+#define LOG(x) Logger().get() << std::fixed << std::setprecision(3) << x 
 
 #ifdef _DEBUG 
     #define LOG_DEBUG(x) Logger().get() << x 
@@ -17,6 +18,31 @@
     #define LOG_DEBUG(x) 
 #endif
 
+class Generator
+{
+    public:
+        virtual float GetNext() = 0;
+};
+
+class RandGenerator : public Generator
+{
+
+public:
+    RandGenerator(unsigned max)
+    : Max(max)
+    {
+        srand(time(NULL));
+    }
+    virtual float GetNext()
+    {
+        float toRet = rand() + 1;
+        while(toRet > Max)
+            toRet /= 10;
+        return toRet; 
+    }
+private:
+        unsigned Max;
+};
 
 class Logger
 {
@@ -43,36 +69,31 @@ enum class Type
 struct Req
 {
 
-    Req(Type type, unsigned t)
-    {
-        type = type;
-        time = t;
-    }
+    Req(Type type, float t)
+    : type(type), time(t)
+    { }
 
-    unsigned time;
+    float time;
     Type type;
 };
 
-
-
 struct ReqFactory
 {
-    ReqFactory(uint16_t maxrand)
-    : Maxrand(maxrand)    
+    ReqFactory(std::shared_ptr<Generator> gen)
+    : pGen(gen)    
     {
         srand(time(NULL));
     }
 
     std::shared_ptr<Req> GetNext(Type t)
     {
-        unsigned next = (rand() + 1) % Maxrand;
+        float next = pGen->GetNext();
         auto ptr = std::shared_ptr<Req>(new Req(t, next)); 
         return ptr;
     }
 protected:
-    uint16_t Maxrand;
+    std::shared_ptr<Generator> pGen;
 };
-
 
 template<class T>
 class Queue
@@ -139,31 +160,28 @@ private:
 class Server
 {
 public:
-    Server(unsigned randmax = 20)
-    : BusyStatus(false),
-    RandMax(randmax),
+    Server(std::shared_ptr<Generator> gen)
+    : pGen(gen),
     FinishingTime(0)
-    {
-        srand(time(NULL));
-    }
+    { }
 
-    bool Serve(unsigned currTime)
+    bool Serve(float currTime)
     {
         if(BusyStatus)
             return false;
 
-        FinishingTime = currTime + ((rand() + 1) % RandMax);
+        FinishingTime = currTime + pGen->GetNext();
         BusyStatus = true;
 
         return true;
     }
 
-    unsigned GetTimeToProcess()
+    float GetTimeToProcess()
     {
         return FinishingTime;
     }
     
-    bool IsBusy(unsigned currTime)
+    bool IsBusy(float currTime)
     {
        if(FinishingTime <= currTime)
        {
@@ -175,37 +193,39 @@ public:
 
 protected:
     bool BusyStatus;
-    unsigned RandMax;
-    unsigned FinishingTime;
+    std::shared_ptr<Generator> pGen;
+    float FinishingTime;
 };
 
 class Timer
 {
     public:
-        unsigned time;
+        float time;
 };
-unsigned ENDING_T = 50;
+
+unsigned ENDING_T = 200;
 unsigned EVENT_FREQ = 20;
 unsigned QUEUE_CAP = 20;
 unsigned SERVER_FREQ = 10;
 
 int main(int argc, char **argv)
 {
-    uint32_t ending_t = ENDING_T, current_t = 0, finishing_t = ending_t + 1, first_ev_t = 0, second_ev_t = 0;
-    ReqFactory factory(EVENT_FREQ); //20
-    Queue<Type> queue(QUEUE_CAP); //TODO: remove
-    Server server(SERVER_FREQ);
+    float ending_t = ENDING_T, current_t = 0.0f, finishing_t = ending_t + 1, first_ev_t = 0, second_ev_t = 0;
+    std::shared_ptr<Generator> reqGen = std::shared_ptr<Generator>(new RandGenerator(EVENT_FREQ));
+    std::shared_ptr<Generator> servGen = std::shared_ptr<Generator>(new RandGenerator(SERVER_FREQ));
+
+    ReqFactory factory(reqGen); 
+    Server server(servGen);
+    Queue<Type> queue(QUEUE_CAP); 
 
     auto type = Type::TReq1;
     
     first_ev_t = factory.GetNext(type)->time;
     second_ev_t = factory.GetNext(Type::TReq2)->time;
-    Logger().get() << "t: " << current_t << "; e1: " << first_ev_t << "; e2: " << second_ev_t<< "; h: " << finishing_t <<"; S: " << server.IsBusy(current_t) << "; n: " << queue.Count() << "; Q: " << "[]"<< std::endl;
-    int iter = 0;
+    LOG("t: " << current_t << "; e1: " << first_ev_t << "; e2: " << second_ev_t<< "; h: " << finishing_t <<"; S: " << server.IsBusy(current_t) << "; n: " << queue.Count() << "; Q: " << "[]"<< std::endl);
     std::string typeStr = "";
     while(current_t < ending_t)
     {
-        iter ++;
         if(finishing_t <= first_ev_t && finishing_t <= second_ev_t)
         //next event is server finishing with current request 
         {
