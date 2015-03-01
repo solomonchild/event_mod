@@ -9,6 +9,14 @@
 
 #include <sstream>
 
+#define LOG(x) Logger().get() << x 
+
+#ifdef _DEBUG 
+    #define LOG_DEBUG(x) Logger().get() << x 
+#else
+    #define LOG_DEBUG(x) 
+#endif
+
 
 class Logger
 {
@@ -57,7 +65,7 @@ struct ReqFactory
 
     std::shared_ptr<Req> GetNext(Type t)
     {
-        unsigned next = rand() % Maxrand;
+        unsigned next = (rand() + 1) % Maxrand;
         auto ptr = std::shared_ptr<Req>(new Req(t, next)); 
         return ptr;
     }
@@ -92,7 +100,7 @@ public:
         if(Elems < 0 || Q.size() == 0)
             throw nullptr;
         auto ret = Q.front();
-        Q.pop();
+        Q.erase(Q.begin());
         Elems--;
         return ret;
     }
@@ -102,16 +110,28 @@ public:
         if(Elems >= Max)
             return;
 
-        Q.push(val);
+        Q.push_back(val);
         Elems++;
     }
     size_t Count()
     {
         return Elems;
     }
+    std::string Serialize()
+    {
+        std::string ret = "[";
+        for(auto &it : Q)
+        {
+            ret +=(it == T::TReq1) ? "e1, " : "e2, ";
+        }
+        if(ret.size() > 3)
+            ret.erase(ret.size() - 2,2);
+        ret += "]";
+        return ret;
+    }
 
 private:
-    std::queue<T> Q;
+    std::vector<T> Q;
     size_t Elems;
     size_t Max;
 };
@@ -164,27 +184,34 @@ class Timer
     public:
         unsigned time;
 };
+unsigned ENDING_T = 50;
+unsigned EVENT_FREQ = 20;
+unsigned QUEUE_CAP = 20;
+unsigned SERVER_FREQ = 10;
 
 int main(int argc, char **argv)
 {
-    uint32_t ending_t = 500, current_t = 0, finishing_t = ending_t + 1, first_ev_t = 0, second_ev_t = 0;
-    ReqFactory factory(20);
-    Queue<Type> queue(100); //TODO: remove
-    Server server(10);
+    uint32_t ending_t = ENDING_T, current_t = 0, finishing_t = ending_t + 1, first_ev_t = 0, second_ev_t = 0;
+    ReqFactory factory(EVENT_FREQ); //20
+    Queue<Type> queue(QUEUE_CAP); //TODO: remove
+    Server server(SERVER_FREQ);
 
     auto type = Type::TReq1;
     
     first_ev_t = factory.GetNext(type)->time;
     second_ev_t = factory.GetNext(Type::TReq2)->time;
-
+    Logger().get() << "t: " << current_t << "; e1: " << first_ev_t << "; e2: " << second_ev_t<< "; h: " << finishing_t <<"; S: " << server.IsBusy(current_t) << "; n: " << queue.Count() << "; Q: " << "[]"<< std::endl;
+    int iter = 0;
+    std::string typeStr = "";
     while(current_t < ending_t)
     {
-        if(finishing_t < first_ev_t && finishing_t < second_ev_t)
+        iter ++;
+        if(finishing_t <= first_ev_t && finishing_t <= second_ev_t)
         //next event is server finishing with current request 
         {
+            typeStr = "Finished processing";
             //set timer to that time
             current_t = finishing_t;
-            Logger().get() << "Server is now free, new current time: " << current_t ;
 
             //Server MUST NOT be busy at this moment
             assert(!server.IsBusy(current_t));
@@ -194,7 +221,6 @@ int main(int argc, char **argv)
             if(!queue.IsEmpty())
             {
                 queue.Deq();
-                Logger().get() << "Deq'ed (" << queue.Count() << ")";
                 server.Serve(current_t);
                 finishing_t = server.GetTimeToProcess();
             }
@@ -207,17 +233,17 @@ int main(int argc, char **argv)
         else
         {
             //next event is either of requests coming in
-            if(first_ev_t < second_ev_t)
+            if(first_ev_t <= second_ev_t)
             {
                 current_t = first_ev_t;
                 type = Type::TReq1;
-                Logger().get() << "Next event is e1 @" << current_t ;
+                typeStr = "e1";
             }
             else
             {
                 current_t = second_ev_t;
                 type = Type::TReq2;
-                Logger().get() << "Next event is e2 @" << current_t;
+                typeStr = "e2";
             }
             
             if(server.IsBusy(current_t))
@@ -227,7 +253,6 @@ int main(int argc, char **argv)
 
                 if(queue.IsFull())
                     throw nullptr;
-                Logger().get() << "Enqueued(" << queue.Count() << ")";
                 queue.Enq(type);
             }
             else
@@ -237,23 +262,20 @@ int main(int argc, char **argv)
                 server.Serve(current_t);
                 finishing_t = server.GetTimeToProcess();
 
-                Logger().get() << "Server is now busy, will finish serving @" << finishing_t;
             }
             //get time for arrival of the request
             //of the consumed request type
-            auto time = factory.GetNext(type)->time;
+            auto t_time = factory.GetNext(type)->time;
             if(type == Type::TReq1)
             {
-                first_ev_t = current_t + time;
-                Logger().get() << "Generated event 1: " << first_ev_t;
+                first_ev_t = current_t + t_time;
             }
             else
             {
-                second_ev_t = current_t + time;
-                Logger().get() << "Generated event 2: " << second_ev_t;
+                second_ev_t = current_t + t_time;
             }
         }
 
-        std::cout << "Iteration end. Current time: " << current_t << " e1: " << first_ev_t << " e2: " << second_ev_t<< " will finish serving @ " << finishing_t << std::endl;
+        LOG("t: " << current_t << "; e1: " << first_ev_t << "; e2: " << second_ev_t<< "; h: " << finishing_t <<"; S: " << server.IsBusy(current_t) << "; n: " << queue.Count() << "; Q: " << queue.Serialize() <<"; Type: " <<typeStr << std::endl);
     }
 }
