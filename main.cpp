@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <cassert>
+#include <cmath>
 
 #include <sstream>
 
@@ -17,6 +18,23 @@
 #else
     #define LOG_DEBUG(x) 
 #endif
+
+class Logger
+{
+    protected:
+        std::ostringstream os;
+    public:
+        std::ostringstream& get()
+        {
+            return os;
+        }
+        ~Logger()
+        {
+            std::cout << os.str() << std::endl;
+        }
+
+};
+
 
 class Generator
 {
@@ -44,20 +62,92 @@ private:
         unsigned Max;
 };
 
-class Logger
+class ExponentialGenerator : public Generator
 {
-    protected:
-        std::ostringstream os;
-    public:
-        std::ostringstream& get()
-        {
-            return os;
-        }
-        ~Logger()
-        {
-            std::cout << os.str() << std::endl;
-        }
+public:
+    ExponentialGenerator(float lambda)
+    : lambda(lambda)
+    {
+        srand(time(NULL));
+    }
 
+    float GetNext() override
+    {
+        float acc = 0;
+        float next_rnd = (float) rand() / RAND_MAX;
+        acc += -1/lambda * log(1 - next_rnd);
+        return acc;
+    }
+
+protected:
+    float lambda;
+};
+
+class ErlangGenerator : public Generator
+{
+public:
+    ErlangGenerator(unsigned l, float lambda)
+    : l(l), lambda(lambda), expGen(new ExponentialGenerator(lambda))
+    {
+        srand(time(NULL));
+    }
+
+    float GetNext() override
+    {
+        float acc = 0;
+        for(int i = 0; i < l; i++)
+        {
+            acc += expGen->GetNext();
+        }
+        return acc;
+    }
+
+private:
+        unsigned l;
+        float lambda;
+        std::shared_ptr<Generator> expGen;
+};
+
+class NormalGenerator : public Generator
+{
+public:
+    NormalGenerator(float mean, float deviation)
+    : mean(mean), dev(deviation)
+    {
+        srand(time(NULL));
+    }
+
+    float GetNext() override
+    {
+        unsigned n = 100;
+        float next_rnd = 0;
+        for(int i = 0; i < n; i++)
+        {
+            next_rnd += (float) rand() / RAND_MAX;
+        }
+        float z =  (next_rnd - n/2) / (sqrt(n/12));
+        float toret = z * dev + mean;
+        return toret;
+    }
+protected:
+    float mean;
+    float dev;
+};
+
+class PuassonGenerator : public Generator
+{
+public:
+    PuassonGenerator(float lambda)
+    : lambda(lambda), expGen(new ExponentialGenerator(lambda))
+    { }
+
+    float GetNext() override
+    {
+       return expGen->GetNext(); 
+    }
+protected:
+    float lambda;
+    std::shared_ptr<Generator> expGen;
 };
 
 
@@ -79,20 +169,26 @@ struct Req
 
 struct ReqFactory
 {
-    ReqFactory(std::shared_ptr<Generator> gen)
-    : pGen(gen)    
+    ReqFactory(std::shared_ptr<Generator> gen1, std::shared_ptr<Generator> gen2)
+    : pGen1(gen1), pGen2(gen2)
     {
         srand(time(NULL));
     }
 
     std::shared_ptr<Req> GetNext(Type t)
     {
-        float next = pGen->GetNext();
+        float next = 0;
+        if(t == Type::TReq1)
+            next = pGen1->GetNext(); 
+        else
+            next = pGen2->GetNext(); 
+
         auto ptr = std::shared_ptr<Req>(new Req(t, next)); 
         return ptr;
     }
 protected:
-    std::shared_ptr<Generator> pGen;
+    std::shared_ptr<Generator> pGen1;
+    std::shared_ptr<Generator> pGen2;
 };
 
 template<class T>
@@ -160,17 +256,21 @@ private:
 class Server
 {
 public:
-    Server(std::shared_ptr<Generator> gen)
-    : pGen(gen),
-    FinishingTime(0)
+    Server(std::shared_ptr<Generator> gen1, std::shared_ptr<Generator> gen2)
+    : pGen1(gen1), pGen2(gen2), FinishingTime(0)
     { }
 
-    bool Serve(float currTime)
+    bool Serve(float currTime, Type t)
     {
         if(BusyStatus)
             return false;
 
-        FinishingTime = currTime + pGen->GetNext();
+        FinishingTime = currTime;
+        if(t == Type::TReq1)
+            FinishingTime += pGen1->GetNext();
+        else
+            FinishingTime += pGen2->GetNext();
+
         BusyStatus = true;
 
         return true;
@@ -193,7 +293,8 @@ public:
 
 protected:
     bool BusyStatus;
-    std::shared_ptr<Generator> pGen;
+    std::shared_ptr<Generator> pGen1;
+    std::shared_ptr<Generator> pGen2;
     float FinishingTime;
 };
 
@@ -203,19 +304,21 @@ class Timer
         float time;
 };
 
-unsigned ENDING_T = 200;
-unsigned EVENT_FREQ = 20;
-unsigned QUEUE_CAP = 20;
-unsigned SERVER_FREQ = 10;
+unsigned ENDING_T = 500;
+unsigned QUEUE_CAP = 200; //?????
 
 int main(int argc, char **argv)
 {
     float ending_t = ENDING_T, current_t = 0.0f, finishing_t = ending_t + 1, first_ev_t = 0, second_ev_t = 0;
-    std::shared_ptr<Generator> reqGen = std::shared_ptr<Generator>(new RandGenerator(EVENT_FREQ));
-    std::shared_ptr<Generator> servGen = std::shared_ptr<Generator>(new RandGenerator(SERVER_FREQ));
 
-    ReqFactory factory(reqGen); 
-    Server server(servGen);
+    std::shared_ptr<Generator> reqGen1 = std::shared_ptr<Generator>(new ErlangGenerator(3, 0.5));
+    std::shared_ptr<Generator> reqGen2 = std::shared_ptr<Generator>(new PuassonGenerator(0.2));
+
+    std::shared_ptr<Generator> servGen1 = std::shared_ptr<Generator>(new NormalGenerator(15, 2));
+    std::shared_ptr<Generator> servGen2 = std::shared_ptr<Generator>(new ExponentialGenerator(1/3));
+
+    ReqFactory factory(reqGen1, reqGen2); 
+    Server server(servGen1, servGen2);
     Queue<Type> queue(QUEUE_CAP); 
 
     auto type = Type::TReq1;
@@ -240,8 +343,8 @@ int main(int argc, char **argv)
             //and tell server to process
             if(!queue.IsEmpty())
             {
-                queue.Deq();
-                server.Serve(current_t);
+                auto t = queue.Deq();
+                server.Serve(current_t, t);
                 finishing_t = server.GetTimeToProcess();
             }
             else
@@ -279,7 +382,7 @@ int main(int argc, char **argv)
             {
                 //Server is not busy
                 // no queing
-                server.Serve(current_t);
+                server.Serve(current_t, type);
                 finishing_t = server.GetTimeToProcess();
 
             }
