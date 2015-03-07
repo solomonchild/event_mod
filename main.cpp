@@ -315,7 +315,7 @@ int main(int argc, char **argv)
     std::shared_ptr<Generator> reqGen2 = std::shared_ptr<Generator>(new PuassonGenerator(0.2));
 
     std::shared_ptr<Generator> servGen1 = std::shared_ptr<Generator>(new NormalGenerator(15, 2));
-    std::shared_ptr<Generator> servGen2 = std::shared_ptr<Generator>(new ExponentialGenerator(1/3));
+    std::shared_ptr<Generator> servGen2 = std::shared_ptr<Generator>(new ExponentialGenerator(1/3.0));
 
     ReqFactory factory(reqGen1, reqGen2); 
     Server server(servGen1, servGen2);
