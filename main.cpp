@@ -8,6 +8,7 @@
 #include <string>
 #include <cassert>
 #include <cmath>
+#include <fstream>
 
 #include <sstream>
 
@@ -307,13 +308,26 @@ class Timer
 unsigned ENDING_T = 500;
 unsigned QUEUE_CAP = 200; //?????
 
+void getSample(int c = 100)
+{
+    std::ofstream of("Exp.txt");
+    for(int i = 0; i < c; i ++)
+    {
+        std::stringstream ss;
+        ss << servGen2->GetNext();
+        of.write(ss.str().c_str(), ss.str().size());
+        of.write("\n", 1);
+
+    }
+}
+
 int main(int argc, char **argv)
 {
+    
     float ending_t = ENDING_T, current_t = 0.0f, finishing_t = ending_t + 1, first_ev_t = 0, second_ev_t = 0;
 
     std::shared_ptr<Generator> reqGen1 = std::shared_ptr<Generator>(new ErlangGenerator(3, 0.5));
     std::shared_ptr<Generator> reqGen2 = std::shared_ptr<Generator>(new PuassonGenerator(0.2));
-
     std::shared_ptr<Generator> servGen1 = std::shared_ptr<Generator>(new NormalGenerator(15, 2));
     std::shared_ptr<Generator> servGen2 = std::shared_ptr<Generator>(new ExponentialGenerator(1/3.0));
 
