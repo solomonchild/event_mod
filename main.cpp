@@ -12,10 +12,10 @@
 
 #include <sstream>
 
-#define LOG(x) Logger().get() << std::fixed << std::setprecision(3) << x 
+#define LOG(x) Logger().get() << std::fixed << std::setprecision(3) << x  << std::endl
 
 #ifdef _DEBUG 
-    #define LOG_DEBUG(x) Logger().get() << x 
+    #define LOG_DEBUG(x) LOG(x) 
 #else
     #define LOG_DEBUG(x) 
 #endif
@@ -336,6 +336,9 @@ int main(int argc, char **argv)
     Queue<Req> queue(QUEUE_CAP); 
 
     auto type = Type::TReq1;
+    unsigned timeBusy = 0;
+    unsigned timeInQueue = 0;
+    unsigned departedTransacts = 0;
     
     first_ev_t = factory.GetNext(type)->time;
     second_ev_t = factory.GetNext(Type::TReq2)->time;
@@ -358,10 +361,12 @@ int main(int argc, char **argv)
             if(!queue.IsEmpty())
             {
                 auto t = queue.Deq();
-                std::cout << "Current time after deq: " << current_t << std::endl;
                 server.Serve(current_t, t.type);
-                std::cout << "Time spent : " << (current_t - t.time) << std::endl;
+                LOG_DEBUG("Time spent : " << (current_t - t.time));
+                timeInQueue += current_t - t.time;
+                departedTransacts ++;
                 finishing_t = server.GetTimeToProcess();
+                timeBusy += finishing_t - current_t;
             }
             else
             {
@@ -393,7 +398,6 @@ int main(int argc, char **argv)
                 if(queue.IsFull())
                     throw nullptr;
                 Req r(type, current_t);
-                std::cout << "Current time: " << current_t << std::endl;
                 queue.Enq(r);
             }
             else
@@ -417,6 +421,8 @@ int main(int argc, char **argv)
             }
         }
 
-        LOG("t: " << current_t << "; e1: " << first_ev_t << "; e2: " << second_ev_t<< "; h: " << finishing_t <<"; S: " << server.IsBusy(current_t) << "; n: " << queue.Count() << "; Q: " << queue.Serialize() <<"; Type: " <<typeStr << std::endl);
+        LOG("t: " << current_t << "; e1: " << first_ev_t << "; e2: " << second_ev_t<< "; h: " << finishing_t <<"; S: " << server.IsBusy(current_t) << "; n: " << queue.Count() << "; Q: " << queue.Serialize() <<"; Type: " << typeStr);
     }
+    LOG("Coefficient: " << timeBusy / 500.0);
+    LOG("Time spent in queue on average: " << float(timeInQueue / departedTransacts) << " for " << departedTransacts << " departed transacts");
 }
