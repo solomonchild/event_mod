@@ -240,7 +240,7 @@ public:
         std::string ret = "[";
         for(auto &it : Q)
         {
-            ret +=(it == T::TReq1) ? "e1, " : "e2, ";
+            ret +=(it.type == Type::TReq1) ? "e1, " : "e2, ";
         }
         if(ret.size() > 3)
             ret.erase(ret.size() - 2,2);
@@ -308,13 +308,13 @@ class Timer
 unsigned ENDING_T = 500;
 unsigned QUEUE_CAP = 200; //?????
 
-void getSample(int c = 100)
+void getSample(std::shared_ptr<Generator> gen, int c = 100)
 {
     std::ofstream of("Exp.txt");
     for(int i = 0; i < c; i ++)
     {
         std::stringstream ss;
-        ss << servGen2->GetNext();
+        ss << gen->GetNext();
         of.write(ss.str().c_str(), ss.str().size());
         of.write("\n", 1);
 
@@ -333,7 +333,7 @@ int main(int argc, char **argv)
 
     ReqFactory factory(reqGen1, reqGen2); 
     Server server(servGen1, servGen2);
-    Queue<Type> queue(QUEUE_CAP); 
+    Queue<Req> queue(QUEUE_CAP); 
 
     auto type = Type::TReq1;
     
@@ -358,7 +358,9 @@ int main(int argc, char **argv)
             if(!queue.IsEmpty())
             {
                 auto t = queue.Deq();
-                server.Serve(current_t, t);
+                std::cout << "Current time after deq: " << current_t << std::endl;
+                server.Serve(current_t, t.type);
+                std::cout << "Time spent : " << (current_t - t.time) << std::endl;
                 finishing_t = server.GetTimeToProcess();
             }
             else
@@ -390,7 +392,9 @@ int main(int argc, char **argv)
 
                 if(queue.IsFull())
                     throw nullptr;
-                queue.Enq(type);
+                Req r(type, current_t);
+                std::cout << "Current time: " << current_t << std::endl;
+                queue.Enq(r);
             }
             else
             {
