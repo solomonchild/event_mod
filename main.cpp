@@ -235,17 +235,37 @@ public:
     {
         return Elems;
     }
-    std::string Serialize()
+    std::string Serialize(bool collapse = false)
     {
-        std::string ret = "[";
+        std::ostringstream ret("[");
+        const char* cur = nullptr;
+        Type prev = static_cast<Type>(-1);
+        unsigned count = 0;
+
         for(auto &it : Q)
         {
-            ret +=(it.type == Type::TReq1) ? "e1, " : "e2, ";
+            if(it.type == prev)
+            {
+                count++;
+                continue;
+            }
+            else if(count > 0)
+            {
+                ret << "(" << ((it.type == Type::TReq1) ? "e1" : "e2") << ")x" << count + 1 << ", ";
+                count = 0;
+            }
+            else
+            {
+                ret << ((prev == Type::TReq1)? "e1, " : "e2, ");
+                prev = it.type;
+            }
         }
-        if(ret.size() > 3)
-            ret.erase(ret.size() - 2,2);
-        ret += "]";
-        return ret;
+
+        std::string retStr = ret.str();
+        if(retStr.size() > 3)
+            retStr.erase(retStr.size() - 2,2);
+        retStr += "]";
+        return retStr;
     }
 
 private:
