@@ -43,25 +43,6 @@ class Generator
         virtual float GetNext() = 0;
 };
 
-class RandGenerator : public Generator
-{
-
-public:
-    RandGenerator(unsigned max)
-    : Max(max)
-    {
-        srand(time(NULL));
-    }
-    virtual float GetNext()
-    {
-        float toRet = rand() + 1;
-        while(toRet > Max)
-            toRet /= 10;
-        return toRet; 
-    }
-private:
-        unsigned Max;
-};
 
 class ExponentialGenerator : public Generator
 {
@@ -317,12 +298,6 @@ protected:
     std::shared_ptr<Generator> pGen1;
     std::shared_ptr<Generator> pGen2;
     float FinishingTime;
-};
-
-class Timer
-{
-    public:
-        float time;
 };
 
 unsigned ENDING_T = 500;
