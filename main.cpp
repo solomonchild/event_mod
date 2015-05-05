@@ -398,6 +398,6 @@ int main(int argc, char **argv)
 
         LOG("t: " << current_t << "; e1: " << first_ev_t << "; e2: " << second_ev_t<< "; h: " << finishing_t <<"; S: " << server.IsBusy(current_t) << "; n: " << queue.Count() << "; Q: " << queue.Serialize() <<"; Type: " << typeStr);
     }
-    LOG("Coefficient: " << timeBusy / 500.0);
+    LOG("Idle coefficient: " << (1 - timeBusy / 500.0));
     LOG("Time spent in queue on average: " << float(timeInQueue / departedTransacts) << " for " << departedTransacts << " departed transacts");
 }
