@@ -296,6 +296,17 @@ void getSample(std::shared_ptr<Generator> gen, int c = 100)
     }
 }
 
+void log(float t, float e1, float e2, float finish, bool sBusy, size_t queueCount, std::string queue, std::string nextEvent)
+{
+        LOG("t: " << t << "; e1: " << e1 << "; e2: " << e2 << "; h: " << finish <<"; S: " << sBusy << "; n: " << queueCount << "; Q: " << queue << " Event: " << nextEvent );
+
+}
+std::string getType(Type t)
+{
+    if(t == Type::TReq1)
+        return "e1";
+    else return "e2";
+}
 int main(int argc, char **argv)
 {
     
@@ -313,29 +324,33 @@ int main(int argc, char **argv)
     auto type = Type::TReq1;
     unsigned timeBusy = 0;
     unsigned timeInQueue = 0;
-    unsigned departedTransacts = 0;
+    unsigned departedTransacts = 2;
+    unsigned emittedTransacts = 0;
     
     first_ev_t = factory.GetNext(type)->time;
     second_ev_t = factory.GetNext(Type::TReq2)->time;
-    LOG("t: " << current_t << "; e1: " << first_ev_t << "; e2: " << second_ev_t<< "; h: " << finishing_t <<"; S: " << server.IsBusy(current_t) << "; n: " << queue.Count() << "; Q: " << "[]"<< std::endl);
     std::string typeStr = "";
     while(current_t < ending_t)
     {
+
         if(finishing_t <= first_ev_t && finishing_t <= second_ev_t)
         //next event is server finishing with current request 
         {
-            typeStr = "Finished processing";
             //set timer to that time
             current_t = finishing_t;
 
+            typeStr = "Server release";
             //Server MUST NOT be busy at this moment
             assert(!server.IsBusy(current_t));
+
+            log(current_t, first_ev_t, second_ev_t, finishing_t, server.IsBusy(current_t), queue.Count(), queue.Serialize(), typeStr);
 
             //try to deque last element in a queue
             //and tell server to process
             if(!queue.IsEmpty())
             {
                 auto t = queue.Deq();
+                log(current_t, first_ev_t, second_ev_t, finishing_t, server.IsBusy(current_t), queue.Count(), queue.Serialize(), getType(t.type) + "->S");
                 server.Serve(current_t, t.type);
                 LOG_DEBUG("Time spent : " << (current_t - t.time));
                 timeInQueue += current_t - t.time;
@@ -374,6 +389,7 @@ int main(int argc, char **argv)
                     throw nullptr;
                 Req r(type, current_t);
                 queue.Enq(r);
+                log(current_t, first_ev_t, second_ev_t, finishing_t, server.IsBusy(current_t), queue.Count(), queue.Serialize(), typeStr + "->Q");
             }
             else
             {
@@ -381,11 +397,12 @@ int main(int argc, char **argv)
                 // no queing
                 server.Serve(current_t, type);
                 finishing_t = server.GetTimeToProcess();
-
+                log(current_t, first_ev_t, second_ev_t, finishing_t, server.IsBusy(current_t), queue.Count(), queue.Serialize(), typeStr + "->S");
             }
             //get time for arrival of the request
             //of the consumed request type
             auto t_time = factory.GetNext(type)->time;
+            emittedTransacts ++;
             if(type == Type::TReq1)
             {
                 first_ev_t = current_t + t_time;
@@ -395,9 +412,7 @@ int main(int argc, char **argv)
                 second_ev_t = current_t + t_time;
             }
         }
-
-        LOG("t: " << current_t << "; e1: " << first_ev_t << "; e2: " << second_ev_t<< "; h: " << finishing_t <<"; S: " << server.IsBusy(current_t) << "; n: " << queue.Count() << "; Q: " << queue.Serialize() <<"; Type: " << typeStr);
     }
     LOG("Idle coefficient: " << (1 - timeBusy / 500.0));
-    LOG("Time spent in queue on average: " << float(timeInQueue / departedTransacts) << " for " << departedTransacts << " departed transacts");
+    LOG("Time spent in queue on average: " << float(timeInQueue / departedTransacts) << " for " << departedTransacts << " departed transacts (and " << emittedTransacts << " emitted total )");
 }
